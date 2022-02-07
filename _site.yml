@@ -1,0 +1,17 @@
+name: "."
+title: "Sarah Lam"
+theme: postcards.css
+description: |
+  Welcome to my website! 
+output_dir: "docs"
+navbar:
+  right:
+    - text: "Home"
+      href: index.html
+    - text: "Sarah"
+      href: sarah.html
+    - text: "Experience"
+      href: experience.html
+    - text: "Blog"
+      href: blog.html
+output: distill::distill_article
