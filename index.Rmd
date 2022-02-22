@@ -3,7 +3,7 @@ site: distill::distill_website
 title: "Welcome to my website!"
 image: "tahoe_pic.jpg"
 output:
-  postcards::trestles
+  postcards::jolla
 ---
 
 Hi! I'm Sarah and I'm a masters' student in Environmental Science and Management. 

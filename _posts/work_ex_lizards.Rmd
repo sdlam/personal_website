@@ -1,0 +1,167 @@
+---
+title: "Jornada Basin Lizards NLS"
+author: "Sarah Lam"
+output: 
+  distill::distill_article:
+    self_contained: false
+---
+
+```{r setup, include=TRUE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+library(tidyverse)
+library(here)
+library(equatiomatic)
+library(Metrics)
+library(cowplot)
+library(modelr)
+library(kableExtra)
+library(broom)
+```
+
+### Overview
+
+This code uses non linear least squares to estimate parameters of a length to weight model for lizard populations in New Mexico. The data used is originally from the Jornada Basin LTER site, all but the variables that we are interested in have been removed. 
+
+Source: Lightfoot, D. and W.G. Whitford. 2020. Lizard pitfall trap data from 11 NPP study locations at the Jornada Basin LTER site, 1989-2006 ver 37. Environmental Data Initiative. https://doi.org/10.6073/pasta/4a6e258fb49c31e222ecbbcfd128967f
+
+```{r}
+#read in data
+lizard <- read_csv(here("_posts", "lizard.csv")) %>% 
+  select(spp, sex, SV_length, weight) %>% 
+  janitor::clean_names() %>% 
+  mutate(across(where(is.character), tolower)) %>% 
+  select(spp, sex, sv_length, weight)
+```
+
+### Non Linear Least Squares Snout Length and Weight Model
+
+Here we aim to fit a snout-to-vent length to weight model of the following form to all lizards in our dataframe.
+
+\begin{equation}
+W=a(SVL)^b
+\end{equation}
+
+In this equation weight is given by W, snout to vent length by SVL, and a and b are the parameters that need to be fitted. Approximations of the parameters are derived from the regression coefficients of a standard OLS done on the log transformed data.
+
+```{r}
+#log transform the data 
+log_data <- lizard %>% 
+  mutate(log_length = log(sv_length), 
+         log_weight = log(weight))
+
+# OLS regression to find parameters
+model_guess <- lm(log_weight ~ log_length, data = log_data)
+
+guess_coefs <- coef(model_guess) #pull coefficients for use in nls 
+```
+
+```{r}
+#create function for nls
+weight_model <- function(a, sv_length, b){
+  weight = a*sv_length^b
+    return(weight)
+}
+```
+
+#### All Lizards
+
+```{r}
+#nls with guesses 
+lizard_nls = nls(weight ~ weight_model(a,sv_length,b), 
+                 data = lizard,
+                 start = list(
+                    a = exp(guess_coefs[1]), #transform coefficient out of log form
+                    b = guess_coefs[2]))
+
+tidy_lizard <- tidy(lizard_nls) %>% 
+  mutate(p.value = ifelse(p.value <.002, paste("<.002"))) %>% 
+  kable(col.names = c("Term",
+                      "Estimate", 
+                      "Standard Error", 
+                      "Statistic", 
+                      "P-Value"), 
+        caption = "**Table 1.** Non linear least squares model for all lizards sampled at Jornada Basin LTER.") %>% 
+   kable_classic(full_width = FALSE)
+
+tidy_lizard
+```
+
+```{r, fig.cap = "**Figure 1.** Non-linear least square model for weight(g) as a function of snout to vent length (mm) for lizards sampled in Jornada Basin LTER site. Lizard data points are broken down by sex, male (blue) and female (yellow)."}
+nls_predict <- augment(lizard_nls) #make nls data into ggplot usable format
+
+ggplot() +
+  geom_point(data = lizard, aes(x = sv_length, y = weight, color = sex)) +
+  scale_color_manual(values = c("gold1", "deepskyblue"), 
+                     labels = c("Female", "Male"),
+                     name = "Lizard Sex") +
+  geom_line(data = nls_predict, aes(x = sv_length, y = .fitted)) +
+  theme_minimal()+
+  labs(x = "Weight (g)", 
+       y = "Length (mm)", 
+       title = "NLS Model of Weight for Jornada Basin Lizards (Lam)")
+```
+
+#### Western Whiptail Lizards 
+Now we fit the nls model to male western whiptail lizards.
+
+```{r}
+#doing nls all over again
+male_whip <- lizard %>% 
+  filter(spp == "cnti", 
+         sex == "m")
+
+whip_log <- male_whip %>% 
+  mutate(log_length = log(sv_length), 
+         log_weight = log(weight))
+
+whip_guess <- lm(log_weight ~ log_length, data = whip_log)
+
+whip_coefs <- coef(whip_guess)
+
+male_whip_nls = nls(weight ~ weight_model(a,sv_length,b), #weight model remains the same
+                 data = male_whip,
+                 start = list(
+                    a = exp(whip_coefs[1]),
+                    b = whip_coefs[2]))
+
+tidy_whip <- tidy(male_whip_nls) %>% 
+  mutate(p.value = case_when(p.value <.002 ~ "<.002", 
+                             p.value >.002 ~ as.character(round(p.value, 3)))) %>% 
+  kable(col.names = c("Term",
+                      "Estimate", 
+                      "Standard Error", 
+                      "Statistic", 
+                      "P-Value"), 
+        caption = "Non linear least squares model for male western whiptail lizards in Jornada Basin LTER.") %>% 
+   kable_classic(full_width = FALSE)
+
+tidy_whip
+
+whip_rmse <- rmse(male_whip_nls, data = male_whip) 
+whip_general_rmse <- rmse(lizard_nls, data = male_whip)
+```
+
+```{r}
+#general nls and male whip nls on male whip data
+whip_predict <- augment(male_whip_nls)
+
+ggplot() +
+  geom_point(data = male_whip, 
+             aes(x = sv_length, y = weight), 
+             color = "deepskyblue") +
+  geom_line(data = nls_predict, 
+            aes(x = sv_length, y = .fitted, color = "All Lizard Model")) +
+  geom_line(data = whip_predict, 
+            aes(x = sv_length, y = .fitted, color = "Western Whiptail Model")) +
+  scale_color_manual(values = c("darkcyan", "darkgoldenrod"), 
+                     name = "NLS Model") +
+  scale_x_continuous(breaks = seq(from=0, to=125, by=25), limits = c(0, 125)) +
+  scale_y_continuous(breaks = seq(from=0, to=40, by=10), limits = (c(0, 40))) +
+  theme_minimal() +
+  labs(x = "Weight (g)", 
+       y = "Length (mm)", 
+       title = "Comparative NLS Models for Male Western Whiptail Lizards (Lam)")
+```
+
+**Figure 2.** Two non-linear least squares models for weight as a function of snout to vent length for male western whiptail lizards. The teal line shows the model developed from a larger dataset of male and female lizards of varying species applied to the presented western whiptail data. The gold line shows an nls model derived from the male western whiptail data and applied to that same data. The gold line model appears to be a slightly better fit for the data based on the model's RMSE of `r round(whip_rmse, 2)` compared to the more general model's RMSE of `r round(whip_general_rmse, 2)`.
