@@ -1,0 +1,75 @@
+---
+title: "Apatial Analysis"
+author: Sarah Lam
+output:
+  distill::distill_article:
+    self_contained: false
+---
+
+```{r setup, include=TRUE, message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+library(spatstat)
+library(maptools) 
+library(raster)
+library(tidyverse)
+library(here)
+library(sf)
+library(tmap)
+library(janitor)
+
+```
+
+## Spatial data visualization (interactive map & choropleth)
+
+### Overview 
+This report visualized oil spill events across California in 2008, and then uses a choropleth map to show a count of inland spill events by county. According to the California Department of Fish and Game, Office of Spill Prevention and Response, the marine data comes from OSPR Oil Spill Prevention Specialists (OSPS) and the inland data is based on California Emergency Management Agency (Cal EMA) reports.
+
+Data Citation: 
+Oil Spill Incident Tracking [ds394] 2008 Edition. California Department of Fish and Game, Office of Spill Prevention and Response. 
+TIGER/Line Shapefile, 2016, state, California, Current County Subdivision State-based. US Census Buereau Department of Commerce. 
+
+```{r}
+# read in the data 
+oil_spill_sf <- read_sf(dsn = here("_posts", "spatial_analysis", "Oil_Spill_Tracking", "Oil_Spill_Incident_Tracking_[ds394].shp")) %>%
+  clean_names() %>% 
+  mutate(across(where(is.character), tolower))
+
+cal_counties_sf <- read_sf(dsn = here("_posts", "spatial_analysis", "ca_counties", "CA_Counties_TIGER2016.shp")) %>% 
+  clean_names()
+```  
+
+#### Exploratory Interctive Map 
+
+```{r}
+#exploratory tmap 
+tmap_mode(mode = "view")
+tm_basemap(c(StreetMap = "OpenStreetMap",
+             TopoMap = "OpenTopoMap")) +
+tm_shape(cal_counties_sf) + 
+  tm_polygons(alpha = 0) + 
+  tm_shape(oil_spill_sf) + 
+  tm_dots()
+```
+
+#### Static Choropleth Map of Inland Oil Spill Events by County
+
+```{r}
+ca_spill_sf <- st_join(cal_counties_sf, oil_spill_sf)
+
+inland_spills_sf <-  ca_spill_sf %>% 
+  filter(inlandmari == "inland") %>% 
+  group_by(name) %>% 
+  summarize(spill_count = sum(!is.na(dfgcontrol)))
+
+ggplot(data = inland_spills_sf) +
+  geom_sf(aes(fill = spill_count), color = 'white', size = 0.1) +
+  theme_void() +
+  scale_fill_gradientn(colors = c('cyan', 'blue', 'purple')) +
+   labs(title = "Inland Oil Spills by California County", 
+        fill = "Number of Spills")
+```
+
+**Figure 2.** Choropleth map comparing inland oil spills in California with light colors representing fewer spills and darker colors indicating more spills. The map indicated that Los Angeles has the largest number of inland spills at `r max(inland_spills_sf$spill_count)` spills.  
+
+
