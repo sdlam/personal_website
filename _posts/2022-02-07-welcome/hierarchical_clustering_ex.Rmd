@@ -1,0 +1,88 @@
+---
+title: "Agglomerative Hierarchical Clustering "
+author: Sarah Lam
+output:
+  distill::distill_article:
+    self_contained: false
+---
+
+```{r setup, include=FALSE, message = FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, wanring = FALSE)
+
+library(tidyverse)
+library(here)
+library(janitor)
+library(NbClust)
+library(ggdendro)
+```
+
+### Overview
+
+This code performs agglomerative hierarchical clustering to analyze and compare water quality at stream sites. The data utilized measures chemical concentrations between sites for Santa Barbara Long Term Ecological Research (LTER). The data has been collected for the Santa Barbara Coastal LTER since 2000 and includes concentrations of NH4, NO3, PO4, dissolved nitrogen, dissolved phosphorous, terephthaloyl chloride, particulate phosphorous, and measurements of turbidity. 
+
+Citation: Santa Barbara Coastal LTER and J. Melack. 2019. SBC LTER: Land: Stream chemistry in the Santa Barbara Coastal drainage area, ongoing since 2000 ver 16. Environmental Data Initiative. https://doi.org/10.6073/pasta/67a558a24ceed9a0a5bf5e46ab841174. 
+
+```{r}
+#read in the data 
+stream_chemistry <- read_csv(here("_posts", "2022-02-07-welcome", "sbc_lter_registered_stream_chemistry.csv")) %>% 
+  clean_names() %>% 
+  na_if(-999.0) %>% 
+  group_by(site_code)
+colnames(stream_chemistry) <- gsub("_u_m", "", colnames(stream_chemistry))
+
+stream_sum <- stream_chemistry %>% #summarize for scale function
+  summarize(nh4 = mean(nh4, na.rm = TRUE),
+            no3 = mean(no3, na.rm = TRUE), 
+            po4 = mean(po4, na.rm = TRUE), 
+            tdn = mean(tdn, na.rm = TRUE), 
+            tdp = mean(tdp, na.rm = TRUE), 
+            tpc = mean(tpc, na.rm = TRUE), 
+            tpn = mean(tpn, na.rm = TRUE),
+            tpp = mean(tpp, na.rm = TRUE), 
+            tss_mgper_liter = mean(tss_mgper_liter), 
+            spec_cond_u_spercm = mean(spec_cond_u_spercm)) %>% 
+  mutate(site_code = case_when(
+          site_code %in% c('AB00') ~ 'Arroyo Burro',
+          site_code %in% c('AT07') ~ 'Atascadero Creek',
+          site_code %in% c('BC02') ~ 'Bell Canyon Creek',
+          site_code %in% c('DV01') ~ 'Devereaux Creek',
+          site_code %in% c('GV01') ~ 'Gaviota Creek',
+          site_code %in% c('HO00') ~ 'Arroyo Hondo Creek',
+          site_code %in% c('MC00') ~ 'Mission Creek',
+          site_code %in% c('ON02') ~ 'San Onofre Creek',
+          site_code %in% c('RG01') ~ 'Refugio Creek',
+          site_code %in% c('RS02') ~ 'Rattlesnake Creek',
+          site_code %in% c('TO02') ~ 'Tecolote Creek',
+          site_code %in% c('SP02') ~ 'San Pedro Creek',
+          site_code %in% c('MC06') ~ 'Mission Creek at Rocky Nook'))
+
+stream_scale <- stream_sum %>%
+  select(nh4:spec_cond_u_spercm) %>% 
+  scale()
+
+rownames(stream_scale) <- stream_sum$site_code #add in site codes as row names
+```
+
+```{r}
+#creating a dendrogram, calculating euclidean distance 
+stream_dist <- dist(stream_scale, method = 'euclidean', diag = TRUE, upper = TRUE) 
+   ### also look at upper and diag arguments
+ 
+# Hierarchical clustering (complete linkage)
+stream_hc_complete <- hclust(stream_dist, method = "complete")
+ 
+# Plot it:
+ggdendrogram(stream_hc_complete, rotate = TRUE, color = "darkcyan") +
+  theme_minimal() +
+  labs(x = "Stream Site", 
+       y = "Distance",
+       title = "Stream Chemistry Site Comparison")
+```
+
+**Figure 1.** This figure compares stream chemistry averages across six Santa Barbara Long Term Ecological Research (LTER) sites using hierarchical clustering. 
+
+### Summary 
+- Devereaux Creek has the furthest euclidean distance on the dendrogram indicating that it's stream chemistry may differ significantly from the other creeks. 
+- The dendrogram does not suggest a clear or obvious number of clusters for the stream chemistry data, based on the dendrogram I would suggest using 4-6 clusters in further analysis. 
+- Other methods of clustering should be explored to see if another method is better than complete hierarchical.
+
